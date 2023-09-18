@@ -1,0 +1,228 @@
+---
+title: "City-level data"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(modelsummary)
+library(ivreg)
+```
+
+## Crime data
+
+```{r}
+#First, we downloaded crime data from open Baltimore
+crime<- read.csv("Crime.csv")
+
+#Then, we classified each crime to be either violet crime or property crime, filtered it for year after 2014, and grouped by date
+crime2<-crime %>%
+  
+  mutate(Violent= ifelse(Description== "HOMICIDE", 1, 0)) %>%
+  
+  mutate(Violent= ifelse(Description== "AGG. ASSAULT", 1, Violent)) %>%
+  
+  mutate(Violent= ifelse(Description== "COMMON ASSAULT", 1, Violent)) %>% 
+  
+  mutate(Violent= ifelse(Description== "RAPE", 1, Violent)) %>% 
+  
+  mutate(Violent= ifelse(Description== "SHOOTING", 1, Violent)) %>% 
+  
+  mutate(Property= ifelse(Description== "ROBBERY - CARJACKING", 1, 0)) %>%
+  
+  mutate(Violent= ifelse(Description== "ROBBERY - COMMERCIAL", 1, Violent)) %>%
+  
+  mutate(Violent= ifelse(Description== "ROBBERY - STREET", 1,Violent)) %>%
+  
+  mutate(Violent= ifelse(Description== "ROBBERY - RESIDENCE", 1, Violent)) %>%
+  
+  mutate(Property= ifelse(Description== "ARSON", 1, Property)) %>%
+  
+  mutate(Property= ifelse(Description== "AUTO THEFT", 1, Property)) %>%
+  
+  mutate(Property= ifelse(Description== "BURGLARY", 1, Property)) %>%
+  
+  mutate(Property= ifelse(Description== "LARCENY", 1, Property)) %>%
+  
+  mutate(Property= ifelse(Description== "LARCENY FROM AUTO", 1, Property)) %>% 
+  
+  #Took substring to get portion of string with Year/Month/Date
+  mutate(date= substr(CrimeDateTime, 1,10)) %>%
+  
+  #Used as.Date to make seperate year,month, and day columns
+  mutate(Date= as.Date(date, format='%Y/%m/%d')) %>%
+  
+  mutate(year=year(Date), month=month(Date), day=day(Date)) %>%
+  
+  #Filtered by years after 2014
+  filter(year >= 2014) %>%
+  
+  group_by(Date) %>%
+  
+  summarise(Violent=sum(Violent),Property=sum(Property))
+
+```
+
+## Pollution data at Old Town
+
+First we downloaded the PM2.5 and NO2 Data from EPA for pollution data in Old Town for years 2014-2021. Then we rbind all the data together for all the years into a data frame. Then we merged both data frames by date and filtered it into the pollution2 df.
+
+```{r}
+PM2014<-read.csv("EPA Air Data/PM2.5Data2014.csv")
+PM2015<-read.csv("EPA Air Data/PM2.5Data2015.csv")
+PM2016<-read.csv("EPA Air Data/PM2.5Data2016.csv")
+PM2017<-read.csv("EPA Air Data/PM2.5Data2017.csv")
+PM2018<-read.csv("EPA Air Data/PM2.5Data2018.csv")
+PM2019<-read.csv("EPA Air Data/PM2.5Data2019.csv")
+PM2020<-read.csv("EPA Air Data/PM2.5Data2020.csv")
+PM2021<-read.csv("EPA Air Data/PM2.5Data2021.csv")
+
+#created data frame for PM2.5
+PM<-rbind(PM2014, PM2015, PM2016, PM2017, PM2018, PM2019, PM2020, PM2021)
+
+#mutate(Daily.Mean.PM2.5.Concentration = ifelse(is.na(Daily.Mean.PM2.5.Concentration), 0#, Daily.Mean.PM2.5.Concentration))
+
+PM2 <- PM %>%
+  group_by(Date) %>%
+  summarize(Daily.Mean.PM2.5.Concentration = mean(Daily.Mean.PM2.5.Concentration))
+
+NO2014<-read.csv("EPA Air Data/NO2Data2014.csv")
+NO2015<-read.csv("EPA Air Data/NO2Data2015.csv")
+NO2016<-read.csv("EPA Air Data/NO2Data2016.csv")
+NO2017<-read.csv("EPA Air Data/NO2Data2017.csv")
+NO2018<-read.csv("EPA Air Data/NO2Data2018.csv")
+NO2019<-read.csv("EPA Air Data/NO2Data2019.csv")
+NO2020<-read.csv("EPA Air Data/NO2Data2020.csv")
+NO2021<-read.csv("EPA Air Data/NO2Data2021.csv")
+
+#created data frame for NO2
+NO2<-rbind(NO2014, NO2015, NO2016, NO2017, NO2018, NO2019, NO2020, NO2021)
+
+NO22 <- NO2 %>%
+  group_by(Date) %>%
+  summarize(Daily.Max.1.hour.NO2.Concentration = 
+              mean(Daily.Max.1.hour.NO2.Concentration))
+
+pollution <- merge(PM2, NO22, by="Date", all = TRUE)
+
+pollution2 <- pollution %>%
+  mutate(Date= as.Date(Date, format='%m/%d/%Y'))
+```
+
+## MERRA Data at Old Town
+
+```{r}
+metdata <- read.csv("met_data_2014_2021.csv")
+metdata2 <- metdata %>%
+  mutate(year= substr(day, 1,4), month= substr(day, 5, 6), day= substr(day, 7, 8)) %>%
+  mutate(date2=paste(year, "/", month, "/", day)) %>%
+  mutate(Date= as.Date(date2, format='%Y / %m / %d'))
+metdata3 <- metdata2[-c(1,6,9:11)]
+```
+
+## Final Data Cleaning/Merging
+
+```{r}
+#combines meteorology and pollution
+metpollution <-  merge(metdata3, pollution2, by = "Date", all.x = TRUE)
+
+#holidays
+holidays <- read.csv("Holiday_Dates.csv") %>%
+  mutate(Date = as.Date(Date, format = '%Y-%m-%d')) %>%
+  filter(Year >= 2014)
+
+#merge metpollution with holidays
+metpollution2<- merge(holidays, metpollution, by = "Date", all=TRUE)
+
+#create a new column that is equal to 0 if its a not a holiday, and 1 if its a holiday
+holidays2<-metpollution2 %>%
+  mutate(holidaybin=ifelse(is.na(Holiday),0,1)) %>%
+  mutate(Jan1st=ifelse(Month==1 & Day==1,1,0)) %>%
+  mutate(Jan1st=ifelse(is.na(Jan1st), 0, 1)) %>%
+  mutate(WeekDay=wday(Date)) %>%
+  mutate(month=month(Date)) %>%
+  mutate(day=day(Date)) %>%
+  mutate(first_day=ifelse(day==1,1,0)) %>%
+  mutate(to_north=ifelse(wind_dir_trig_to_degrees>90 & 
+                           wind_dir_trig_to_degrees<=180,1,0)) %>%
+  mutate(to_north=ifelse(wind_dir_trig_to_degrees>= -180 & 
+                           wind_dir_trig_to_degrees< -90,1,to_north)) 
+
+#merge spreadsheet from previous step with crime2
+mpc<-merge(holidays2, crime2, by = "Date", all.x=TRUE)
+write.csv(mpc, "finaldf.csv")
+
+```
+
+## Empirical Strategy
+
+OLS Regression Results:
+
+```{r}
+
+m3<-lm(log(Violent) ~ Daily.Mean.PM2.5.Concentration+ 
+         surface_air_temperature + total_precipitation + surface_wind_speed+
+         holidaybin + Jan1st + first_day + as.factor(WeekDay) + as.factor(month),
+       data=mpc)
+
+m4<-lm(log(Violent) ~ Daily.Max.1.hour.NO2.Concentration+ 
+         surface_air_temperature + total_precipitation + surface_wind_speed+
+         holidaybin + Jan1st + first_day + as.factor(WeekDay) + as.factor(month),
+       data=mpc)
+
+m5<-lm(log(Property) ~ Daily.Mean.PM2.5.Concentration+ 
+         surface_air_temperature + total_precipitation + surface_wind_speed+
+         holidaybin + Jan1st + first_day + as.factor(WeekDay) + as.factor(month),
+       data=mpc)
+
+m6<-lm(log(Property) ~ Daily.Max.1.hour.NO2.Concentration+ 
+         surface_air_temperature + total_precipitation + surface_wind_speed+
+         holidaybin + Jan1st + first_day + as.factor(WeekDay) + as.factor(month),
+       data=mpc)
+
+m_list <- list(V_PM2.5 = m3, V_NO2=m4, P_PM2.5 = m5, P_NO2 = m6)
+msummary(m_list, 
+         estimate  = c("{estimate}{stars}",
+                "{estimate}{stars}",
+                "{estimate}{stars}",
+                "{estimate}{stars}"),)
+
+```
+
+2SLS Regression Results:
+
+```{r}
+m3 <- ivreg(log(Violent) ~ Daily.Mean.PM2.5.Concentration+
+         surface_air_temperature + total_precipitation + surface_wind_speed+
+         holidaybin + Jan1st + first_day + as.factor(WeekDay) + as.factor(month) |
+           to_north,
+       data=mpc)
+
+m4 <- ivreg(log(Violent) ~ Daily.Max.1.hour.NO2.Concentration+
+         surface_air_temperature + total_precipitation + surface_wind_speed+
+         holidaybin + Jan1st + first_day + as.factor(WeekDay) + as.factor(month) |
+           to_north,
+       data=mpc)
+
+m5 <- ivreg(log(Property) ~ Daily.Mean.PM2.5.Concentration+
+         surface_air_temperature + total_precipitation + surface_wind_speed+
+         holidaybin + Jan1st + first_day + as.factor(WeekDay) + as.factor(month) |
+           to_north,
+       data=mpc)
+
+m6 <- ivreg(log(Property) ~ Daily.Max.1.hour.NO2.Concentration+
+         surface_air_temperature + total_precipitation + surface_wind_speed+
+         holidaybin + Jan1st + first_day + as.factor(WeekDay) + as.factor(month) |
+           to_north,
+       data=mpc)
+
+m_list <- list(V_PM2.5 = m3, V_NO2=m4, P_PM2.5 = m5, P_NO2 = m6)
+msummary(m_list, 
+         estimate  = c("{estimate}{stars}",
+                "{estimate}{stars}",
+                "{estimate}{stars}",
+                "{estimate}{stars}"),)
+
+```
