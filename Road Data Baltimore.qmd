@@ -1,0 +1,170 @@
+---
+title: "Road Data Baltimore"
+format: html
+editor: visual
+---
+
+```{r}
+#library("raster")
+#library("rgdal")
+#library("tmap")
+library("tidyverse")
+#library("rgeos")
+library("terra")
+
+
+```
+
+Upload interstate and roads data
+
+```{r}
+r<-vect("roads/tl_2019_24_prisecroads.shp")
+i<-subset(r, r$RTTYP=="I")
+crs(i)<-crs("+init=epsg:4326 +proj=longlat")
+
+c<-vect("500Cities_City_11082016/CityBoundaries.shp")
+b<-subset(c, c$NAME=="Baltimore" & c$ST=="MD")
+bp<-project(b, crs(i))
+
+plot(bp)
+lines(i, col="red")
+```
+
+Make interactive map with crime rates
+
+```{r}
+library(leaflet)
+library(raster)
+library(tmap)
+
+bp_sp <- as(bp, "Spatial")
+i_sp <- as(i, "Spatial")
+
+tmap_leaflet(                                                      
+  tm_shape(bp_sp) + tm_borders() +
+    tm_shape(i_sp) + tm_lines(col="red")
+) 
+```
+
+Make polygons around i-83
+
+```{r}
+lon<-c(-76.612, -76.611)
+lat<- c(39.304, 39.294)
+lonlat <- cbind(id=1, part=1, lon, lat)
+lns <- vect(lonlat, type="lines")
+
+buffer_distance<-1/60
+buffer<-buffer (lns, buffer_distance, capstyle="flat")
+p<-split(buffer, lns)
+crs(p)<-"+init=epsg:4326 +proj=longlat"
+p_a<-p[1]
+p_b<-p[2]
+
+plot(bp)
+lines(p_a, col="green")
+lines(p_b, col="blue")
+lines(lns, col="red", lwd=2)
+```
+
+\<\<\<\<\<\<\< HEAD The map below shows all the areas in our analysis. Each area has a width of one mile on each side of the highways. These areas are chosen because they are areas with criminal activity and the one mile area does not overlap with the one mile areas of other interstate segments.
+
+```{r}
+########## Identify segments######################################
+i83lon<-c(-76.611, -76.612)
+i83lat<-c(39.294, 39.304)
+
+i95lon<-c(-76.67, -76.654)
+i95lat<-c(39.265, 39.271)
+
+i83nlon<-c(-76.645, -76.642)
+i83nlat<-c(39.335, 39.332)
+
+i395lon<-c(-76.619, -76.620)
+i395lat<-c(39.284, 39.28)
+
+
+#####make polygons for each segment #########################
+buffer_distance<-1/60
+#i83n
+i83n_lonlat <- cbind(id=1, part=1, i83nlon, i83nlat)
+i83n_lns <- vect(i83n_lonlat, type="lines")
+
+i83n_buffer<-buffer(i83n_lns, buffer_distance, capstyle="flat")
+i83n_p<-split(i83n_buffer, i83n_lns)
+crs(i83n_p)<-"+init=epsg:4326 +proj=longlat"
+i83n_west<-i83n_p[1]
+i83n_east<-i83n_p[2]
+
+#i83
+i83_lonlat <- cbind(id=1, part=1, i83lon, i83lat)
+i83_lns <- vect(i83_lonlat, type="lines")
+
+i83_buffer<-buffer(i83_lns, buffer_distance, capstyle="flat")
+i83_p<-split(i83_buffer, i83_lns)
+crs(i83_p)<-"+init=epsg:4326 +proj=longlat"
+i83_west<-i83_p[1]
+i83_east<-i83_p[2]
+
+#i93
+i95_lonlat <- cbind(id=1, part=1, i95lon, i95lat)
+i95_lns <- vect(i95_lonlat, type="lines")
+
+i95_buffer<-buffer(i95_lns, buffer_distance, capstyle="flat")
+i95_p<-split(i95_buffer, i95_lns)
+crs(i95_p)<-"+init=epsg:4326 +proj=longlat"
+i95_south<-i95_p[1]
+i95_north<-i95_p[2]
+
+#i395
+i395_lonlat <- cbind(id=1, part=1, i395lon, i395lat)
+i395_lns <- vect(i395_lonlat, type="lines")
+
+i395_buffer<-buffer(i395_lns, buffer_distance, capstyle="flat")
+i395_p<-split(i395_buffer, i395_lns)
+crs(i395_p)<-"+init=epsg:4326 +proj=longlat"
+i395_west<-i395_p[1]
+i395_east<-i395_p[2]
+
+#plotting
+plot(bp)
+lines(i83n_east, col="cyan")
+lines(i83n_west, col="cyan")
+lines(i83n_lns, col="red", lwd=2)
+lines(i83_east, col="blue")
+lines(i83_west, col="blue")
+lines(i83_lns, col="red", lwd=2)
+lines(i95_north, col="darkgreen")
+lines(i95_south, col="darkgreen")
+lines(i95_lns, col="red", lwd=2)
+lines(i395_east, col="orange")
+lines(i395_west, col="orange")
+lines(i395_lns, col="red", lwd=2)
+```
+
+Crime plotting
+
+```{r}
+crime<-read.csv("Crime.csv")
+crime2<-crime %>%
+  filter(Longitude < 0 && Latitude > 0)
+crime_lon<-(crime2$Longitude)
+crime_lat<-(crime2$Latitude)
+crime_pos<-cbind(crime_lon, crime_lat)
+plot(crime_pos)
+
+plot(bp)
+lines(i83n_east, col="cyan")
+lines(i83n_west, col="cyan")
+lines(i83n_lns, col="red", lwd=2)
+lines(i83_east, col="blue")
+lines(i83_west, col="blue")
+lines(i83_lns, col="red", lwd=2)
+lines(i95_north, col="darkgreen")
+lines(i95_south, col="darkgreen")
+lines(i95_lns, col="red", lwd=2)
+lines(i395_east, col="orange")
+lines(i395_west, col="orange")
+lines(i395_lns, col="red", lwd=2)
+
+```
